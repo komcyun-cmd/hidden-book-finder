@@ -7,11 +7,14 @@ import re
 # 기본 설정
 # ===============================
 st.set_page_config(
-    page_title="숨은 명저",
+    page_title="오늘의 숨은 명저",
     layout="centered"
 )
 
-st.title("📚 오늘의 숨은 명저")
+st.markdown(
+    "<h1 style='color:white;'>📚 오늘의 숨은 명저</h1>",
+    unsafe_allow_html=True
+)
 st.caption("베스트셀러가 아닌, 읽을 이유가 분명한 한 권")
 
 HEADERS = {
@@ -34,7 +37,7 @@ def extract_books(soup):
     books = []
 
     items = soup.select("li.prod_item")
-    for item in items[:10]:  # 상위 10개만 사용
+    for item in items[:10]:
         title_tag = item.select_one("span.prod_name")
         desc_tag = item.select_one("p.prod_introduction")
         review_tag = item.select_one("span.review_klover_text")
@@ -112,18 +115,16 @@ def find_hidden_book():
         if not is_overexposed(b):
             scored.append(b)
 
-    # 1차: 필터 통과자 중 최고점
     if scored:
         return sorted(scored, key=lambda x: x["score"], reverse=True)[0]
 
-    # 2차: 필터 무시하고 최고점
     return sorted(books, key=lambda x: x["score"], reverse=True)[0]
 
 # ===============================
-# 설명 문구 생성
+# 설명 문구
 # ===============================
-def make_reason(book):
-    return f"""
+def make_reason():
+    return """
 이 책은 크게 주목받지 않았지만,
 삶을 다루는 문장이 비교적 조용하게 이어진다.
 
@@ -145,9 +146,20 @@ if st.button("오늘의 숨은 명저 찾기"):
             st.error("검색 중 문제가 발생했습니다.")
             st.stop()
 
+    st.divider()
+
     if book:
-        st.subheader(book["title"])
-        st.write(make_reason(book))
+        # 🔥 제목을 강제 스타일로 표시 (핵심 수정)
+        st.markdown(
+            f"""
+            <h2 style="color:#ffffff; margin-bottom:1rem;">
+                {book["title"]}
+            </h2>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.write(make_reason())
         st.caption("※ 교보문고 검색 결과를 기반으로 자동 선별되었습니다.")
     else:
         st.write("오늘은 조건에 가장 가까운 한 권을 골랐습니다.")
