@@ -14,7 +14,7 @@ TTB_KEY = st.secrets["ALADIN_TTB_KEY"].strip().replace("\n", "")
 # ===============================
 st.set_page_config(page_title="오늘의 숨은 명저", layout="centered")
 st.title("📚 오늘의 숨은 명저")
-st.caption("알라딘 공식 Open API 기반 · 반드시 검색")
+st.caption("알라딘 공식 Open API · 오늘의 책 + 다른 선택지")
 
 # ===============================
 # 기분 → 키워드
@@ -29,7 +29,7 @@ MOOD_KEYWORDS = {
 BLOCK_WORDS = ["성공", "부자", "재테크", "주식", "유튜브"]
 
 # ===============================
-# 알라딘 API 검색
+# 알라딘 API
 # ===============================
 def search_aladin(keyword):
     url = "https://www.aladin.co.kr/ttb/api/ItemSearch.aspx"
@@ -64,21 +64,20 @@ def filter_books(items):
             "desc": desc,
             "link": b.get("link")
         })
-
     return results
 
 # ===============================
-# 날짜 고정 랜덤
+# 고정 랜덤
 # ===============================
-def daily_pick(items, seed):
+def pick_with_seed(items, seed):
     seed_val = int(hashlib.md5(seed.encode()).hexdigest(), 16)
     random.seed(seed_val)
     return random.choice(items)
 
 # ===============================
-# 책 선택
+# 책 찾기
 # ===============================
-def find_book(mood):
+def find_books(mood):
     keywords = MOOD_KEYWORDS[mood][:]
     random.shuffle(keywords)
 
@@ -86,10 +85,8 @@ def find_book(mood):
         items = search_aladin(kw)
         books = filter_books(items)
         if books:
-            today = datetime.date.today().isoformat()
-            return daily_pick(books, today + mood)
-
-    return None
+            return books
+    return []
 
 # ===============================
 # 선정 이유
@@ -113,9 +110,9 @@ REASONS = {
     ]
 }
 
-def pick_reason(mood):
+def pick_reason(mood, extra=""):
     today = datetime.date.today().isoformat()
-    return daily_pick(REASONS[mood], today + mood + "reason")
+    return pick_with_seed(REASONS[mood], today + mood + extra)
 
 # ===============================
 # UI
@@ -125,13 +122,28 @@ mood = st.radio(
     list(MOOD_KEYWORDS.keys())
 )
 
-if st.button("오늘의 숨은 명저 찾기"):
-    with st.spinner("알라딘 서가를 검색 중입니다…"):
-        book = find_book(mood)
+# 상태 저장
+if "retry" not in st.session_state:
+    st.session_state.retry = 0
 
-    if not book:
+if st.button("오늘의 숨은 명저 찾기"):
+    st.session_state.retry = 0
+
+if st.button("🔁 다른 책 보기"):
+    st.session_state.retry += 1
+
+if st.session_state.retry >= 0:
+    with st.spinner("알라딘 서가를 검색 중입니다…"):
+        books = find_books(mood)
+
+    if not books:
         st.warning("오늘은 조건에 맞는 책을 찾지 못했습니다.")
         st.stop()
+
+    today = datetime.date.today().isoformat()
+    seed = f"{today}{mood}{st.session_state.retry}"
+
+    book = pick_with_seed(books, seed)
 
     st.divider()
 
@@ -141,9 +153,9 @@ if st.button("오늘의 숨은 명저 찾기"):
     )
 
     st.markdown("### 📖 책을 고른 이유")
-    st.write(pick_reason(mood))
+    st.write(pick_reason(mood, str(st.session_state.retry)))
 
     with st.expander("📘 책 소개"):
         st.write(book["desc"])
 
-    st.caption("※ 알라딘 공식 Open API · 하루 1회 고정 추천")
+    st.caption("※ 기본은 오늘의 책 고정 · 버튼 클릭 시 다른 후보")
