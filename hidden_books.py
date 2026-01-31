@@ -1,25 +1,33 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+import random
 import re
 
 # ===============================
 # 기본 설정
 # ===============================
-st.set_page_config(
-    page_title="오늘의 숨은 명저",
-    layout="centered"
-)
+st.set_page_config(page_title="오늘의 숨은 명저")
 
-st.markdown(
-    "<h1 style='color:white;'>📚 오늘의 숨은 명저</h1>",
-    unsafe_allow_html=True
-)
-st.caption("베스트셀러가 아닌, 읽을 이유가 분명한 한 권")
+st.title("📚 오늘의 숨은 명저")
+st.caption("조용히 남아 있는 책 한 권")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
+
+# ===============================
+# 검색 키워드 풀 (랜덤)
+# ===============================
+SEARCH_KEYWORDS = [
+    "인문학",
+    "사유",
+    "철학 에세이",
+    "삶의 태도",
+    "문장",
+    "생각",
+    "일상 철학"
+]
 
 # ===============================
 # 교보문고 검색
@@ -31,25 +39,24 @@ def search_kyobo(keyword: str):
     return BeautifulSoup(res.text, "html.parser")
 
 # ===============================
-# 검색 결과에서 책 추출
+# 책 추출
 # ===============================
 def extract_books(soup):
     books = []
-
     items = soup.select("li.prod_item")
-    for item in items[:10]:
+
+    for item in items[:15]:
         title_tag = item.select_one("span.prod_name")
         desc_tag = item.select_one("p.prod_introduction")
         review_tag = item.select_one("span.review_klover_text")
 
-        title = title_tag.get_text(strip=True) if title_tag else ""
-        desc = desc_tag.get_text(strip=True) if desc_tag else ""
-        reviews = review_tag.get_text(strip=True) if review_tag else ""
+        if not title_tag:
+            continue
 
         books.append({
-            "title": title,
-            "desc": desc,
-            "reviews": reviews
+            "title": title_tag.get_text(strip=True),
+            "desc": desc_tag.get_text(strip=True) if desc_tag else "",
+            "reviews": review_tag.get_text(strip=True) if review_tag else ""
         })
 
     return books
@@ -58,52 +65,43 @@ def extract_books(soup):
 # 과다 노출 필터
 # ===============================
 BLOCK_KEYWORDS = [
-    "베스트셀러", "힐링", "성공",
-    "유튜브", "tv", "추천",
-    "에세이스트", "셀럽"
+    "베스트셀러", "유튜브", "tv", "셀럽",
+    "성공", "부자", "힐링"
 ]
 
 def is_overexposed(book):
     text = book["title"] + book["desc"]
-    return any(kw in text for kw in BLOCK_KEYWORDS)
+    return any(k in text for k in BLOCK_KEYWORDS)
 
 # ===============================
-# 리뷰 수 파싱
+# 리뷰 수
 # ===============================
 def parse_review_count(text):
     nums = re.findall(r"\d+", text)
     return int(nums[0]) if nums else 0
 
 # ===============================
-# 숨은 명저 점수 계산
+# 점수
 # ===============================
-DENSITY_KEYWORDS = {
-    "사유": 2,
-    "문장": 2,
-    "태도": 1,
-    "관점": 1,
-    "일상": 1,
-    "침묵": 1
-}
+KEYWORDS_SCORE = ["사유", "문장", "태도", "관점", "생각"]
 
 def score_book(book):
     score = 0
-
-    for k, v in DENSITY_KEYWORDS.items():
+    for k in KEYWORDS_SCORE:
         if k in book["desc"]:
-            score += v
+            score += 1
 
-    review_count = parse_review_count(book["reviews"])
-    if review_count < 500:
+    if parse_review_count(book["reviews"]) < 500:
         score += 1
 
     return score
 
 # ===============================
-# 최종 1권 선택 (항상 반환)
+# 숨은 명저 찾기 (랜덤성 포함)
 # ===============================
 def find_hidden_book():
-    soup = search_kyobo("인문학 사유")
+    keyword = random.choice(SEARCH_KEYWORDS)
+    soup = search_kyobo(keyword)
     books = extract_books(soup)
 
     if not books:
@@ -111,35 +109,34 @@ def find_hidden_book():
 
     scored = []
     for b in books:
-        b["score"] = score_book(b)
         if not is_overexposed(b):
+            b["score"] = score_book(b)
             scored.append(b)
 
-    if scored:
-        return sorted(scored, key=lambda x: x["score"], reverse=True)[0]
+    if not scored:
+        scored = books
 
-    return sorted(books, key=lambda x: x["score"], reverse=True)[0]
+    scored = sorted(scored, key=lambda x: x.get("score", 0), reverse=True)
+
+    top_candidates = scored[:5] if len(scored) >= 5 else scored
+    return random.choice(top_candidates)
 
 # ===============================
 # 설명 문구
 # ===============================
 def make_reason():
-    return """
-이 책은 크게 주목받지 않았지만,
-삶을 다루는 문장이 비교적 조용하게 이어진다.
-
-요즘 책들이 해답이나 메시지를 전면에 내세울 때,
-이 책은 생각이 머무는 시간을 허용한다.
-
-읽고 나면 무엇을 얻었다기보다,
-하루를 대하는 태도가 조금 달라진다.
-"""
+    return (
+        "이 책은 크게 주목받지는 않았지만,\n"
+        "생각을 서두르지 않는 문장으로 이루어져 있습니다.\n\n"
+        "요즘 책들이 답을 제시하려 할 때,\n"
+        "이 책은 질문이 머무를 자리를 남깁니다."
+    )
 
 # ===============================
 # UI
 # ===============================
 if st.button("오늘의 숨은 명저 찾기"):
-    with st.spinner("조용히 찾는 중..."):
+    with st.spinner("조용히 책장을 넘기는 중..."):
         try:
             book = find_hidden_book()
         except Exception:
@@ -149,17 +146,9 @@ if st.button("오늘의 숨은 명저 찾기"):
     st.divider()
 
     if book:
-        # 🔥 제목을 강제 스타일로 표시 (핵심 수정)
-        st.markdown(
-            f"""
-            <h2 style="color:#ffffff; margin-bottom:1rem;">
-                {book["title"]}
-            </h2>
-            """,
-            unsafe_allow_html=True
-        )
-
+        # 🔥 제목: Streamlit 기본 컴포넌트 (안 안 보임)
+        st.subheader(book["title"])
         st.write(make_reason())
-        st.caption("※ 교보문고 검색 결과를 기반으로 자동 선별되었습니다.")
+        st.caption("※ 교보문고 검색 결과 기반")
     else:
-        st.write("오늘은 조건에 가장 가까운 한 권을 골랐습니다.")
+        st.write("오늘은 고를 수 있는 책이 없었습니다.")
