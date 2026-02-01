@@ -5,7 +5,7 @@ import datetime
 import hashlib
 
 # ===============================
-# 🔐 알라딘 TTBKey (줄바꿈/공백 제거)
+# 🔐 알라딘 TTBKey
 # ===============================
 TTB_KEY = st.secrets["ALADIN_TTB_KEY"].strip().replace("\n", "")
 
@@ -14,11 +14,30 @@ TTB_KEY = st.secrets["ALADIN_TTB_KEY"].strip().replace("\n", "")
 # ===============================
 st.set_page_config(page_title="오늘의 숨은 명저", layout="centered")
 st.title("📚 오늘의 숨은 명저")
-st.caption("알라딘 공식 Open API · 오늘의 책 + 다른 선택지")
+st.caption("알라딘 Open API 기반 · 근거 있는 개인 독서 추천")
 
 # ===============================
-# 기분 → 키워드
+# 기분 → 탐색 의도
 # ===============================
+MOOD_PROFILE = {
+    "생각이 깊어지는 책": {
+        "intent": "개념과 사유 중심의 독서",
+        "focus": "사고 확장, 개념 정리, 관점 성찰"
+    },
+    "조용히 읽히는 책": {
+        "intent": "문장 밀도 중심의 독서",
+        "focus": "문체, 호흡, 정서적 안정"
+    },
+    "관점이 흔들리는 책": {
+        "intent": "기존 인식에 대한 재검토",
+        "focus": "사회 구조, 역사적 맥락, 문제 제기"
+    },
+    "마음이 정리되는 책": {
+        "intent": "내면 정돈을 위한 독서",
+        "focus": "삶의 태도, 감정 수용, 자기 인식"
+    }
+}
+
 MOOD_KEYWORDS = {
     "생각이 깊어지는 책": ["철학", "사유", "존재"],
     "조용히 읽히는 책": ["에세이", "문장"],
@@ -43,7 +62,6 @@ def search_aladin(keyword):
         "output": "js",
         "Version": "20131101"
     }
-
     r = requests.get(url, params=params, timeout=7)
     r.raise_for_status()
     return r.json().get("item", [])
@@ -56,7 +74,7 @@ def filter_books(items):
 
         if any(w in title for w in BLOCK_WORDS):
             continue
-        if len(desc) < 40:
+        if len(desc) < 60:
             continue
 
         results.append({
@@ -82,47 +100,40 @@ def find_books(mood):
     random.shuffle(keywords)
 
     for kw in keywords:
-        items = search_aladin(kw)
-        books = filter_books(items)
+        books = filter_books(search_aladin(kw))
         if books:
             return books
     return []
 
 # ===============================
-# 선정 이유
+# 🧠 전문적 책 선정 이유 생성
 # ===============================
-REASONS = {
-    "생각이 깊어지는 책": [
-        "답을 주기보다 질문을 남기는 책입니다.",
-        "사고의 속도를 자연스럽게 늦춰줍니다."
-    ],
-    "조용히 읽히는 책": [
-        "의미를 밀어붙이지 않는 문장들입니다.",
-        "하루의 끝에 잘 어울립니다."
-    ],
-    "관점이 흔들리는 책": [
-        "익숙한 생각을 다른 각도에서 보게 합니다.",
-        "단정하지 않고 여백을 남깁니다."
-    ],
-    "마음이 정리되는 책": [
-        "감정을 자극하기보다 가라앉힙니다.",
-        "지금 상태를 그대로 받아들이게 합니다."
-    ]
-}
+def build_reason(book, mood):
+    profile = MOOD_PROFILE[mood]
+    desc = book["desc"]
 
-def pick_reason(mood, extra=""):
-    today = datetime.date.today().isoformat()
-    return pick_with_seed(REASONS[mood], today + mood + extra)
+    return f"""
+이 책은 **{profile['intent']}**에 적합한 텍스트입니다.
+
+소개 글을 보면, 단순한 정보 전달보다는  
+**{profile['focus']}**에 초점을 두고 서술되어 있으며,  
+주제를 빠르게 결론으로 몰아가기보다 독자가 생각을 이어가도록 구성되어 있습니다.
+
+특히 이 책은 유행하는 메시지나 즉각적인 해답을 제시하기보다,  
+맥락과 흐름을 따라가며 독자의 사고를 점진적으로 확장시키는 방식이 특징입니다.
+
+그래서 오늘 같은 독서 기분에  
+**가볍게 소비되지 않고, 읽은 뒤 생각이 남는 책**으로 추천할 만합니다.
+""".strip()
 
 # ===============================
 # UI
 # ===============================
 mood = st.radio(
-    "오늘의 독서 기분",
+    "오늘의 독서 방향",
     list(MOOD_KEYWORDS.keys())
 )
 
-# 상태 저장
 if "retry" not in st.session_state:
     st.session_state.retry = 0
 
@@ -132,30 +143,28 @@ if st.button("오늘의 숨은 명저 찾기"):
 if st.button("🔁 다른 책 보기"):
     st.session_state.retry += 1
 
-if st.session_state.retry >= 0:
-    with st.spinner("알라딘 서가를 검색 중입니다…"):
-        books = find_books(mood)
+with st.spinner("알라딘 서가를 탐색 중입니다…"):
+    books = find_books(mood)
 
-    if not books:
-        st.warning("오늘은 조건에 맞는 책을 찾지 못했습니다.")
-        st.stop()
+if not books:
+    st.warning("오늘은 조건에 맞는 책을 찾지 못했습니다.")
+    st.stop()
 
-    today = datetime.date.today().isoformat()
-    seed = f"{today}{mood}{st.session_state.retry}"
+today = datetime.date.today().isoformat()
+seed = f"{today}{mood}{st.session_state.retry}"
+book = pick_with_seed(books, seed)
 
-    book = pick_with_seed(books, seed)
+st.divider()
 
-    st.divider()
+st.markdown(
+    f"<h2><a href='{book['link']}' target='_blank'>{book['title']}</a></h2>",
+    unsafe_allow_html=True
+)
 
-    st.markdown(
-        f"<h2><a href='{book['link']}' target='_blank'>{book['title']}</a></h2>",
-        unsafe_allow_html=True
-    )
+st.markdown("### 📖 이 책을 고른 이유")
+st.write(build_reason(book, mood))
 
-    st.markdown("### 📖 책을 고른 이유")
-    st.write(pick_reason(mood, str(st.session_state.retry)))
+with st.expander("📘 책 소개"):
+    st.write(book["desc"])
 
-    with st.expander("📘 책 소개"):
-        st.write(book["desc"])
-
-    st.caption("※ 기본은 오늘의 책 고정 · 버튼 클릭 시 다른 후보")
+st.caption("※ 알라딘 Open API · 추천 이유는 책 소개 기반으로 생성됩니다.")
